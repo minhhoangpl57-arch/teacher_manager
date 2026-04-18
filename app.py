@@ -36,6 +36,48 @@ import subprocess
 import os
 import subprocess
 import platform
+def load_documents_view(self, base_directory):
+    # CHANGE THIS to your actual scrollable frame variable
+    target_frame = self.main_scrollable_frame 
+
+    # Clear existing UI
+    for widget in target_frame.winfo_children():
+        widget.destroy()
+
+    if not os.path.exists(base_directory):
+        print(f"DEBUG: Cannot find path: {base_directory}")
+        return
+
+    print(f"DEBUG: Scanning main folder: {base_directory}")
+
+    for item_name in sorted(os.listdir(base_directory)):
+        if item_name.startswith('.') or item_name.startswith('~$'):
+            continue
+
+        item_path = os.path.join(base_directory, item_name)
+
+        if os.path.isdir(item_path):
+            print(f"DEBUG: Found Sub-folder -> {item_name}")
+            
+            # 1. Create the Folder Frame
+            folder_frame = ctk.CTkFrame(target_frame, fg_color="transparent")
+            folder_frame.pack(fill="x", pady=5, padx=5)
+            ctk.CTkLabel(folder_frame, text=f"📁 {item_name}", font=("Arial", 14, "bold")).pack(anchor="w", padx=5)
+
+            # 2. Scan inside the Sub-folder
+            for sub_item in sorted(os.listdir(item_path)):
+                if sub_item.startswith('.') or sub_item.startswith('~$'):
+                    continue
+                    
+                sub_item_path = os.path.join(item_path, sub_item)
+
+                if os.path.isfile(sub_item_path):
+                    print(f"DEBUG:   Found File -> {sub_item}")
+                    
+                    # 3. Create File Frame INSIDE Folder Frame
+                    file_frame = ctk.CTkFrame(folder_frame)
+                    file_frame.pack(fill="x", pady=2, padx=(30, 5)) 
+                    ctk.CTkLabel(file_frame, text=f"📄 {sub_item}").pack(side="left", padx=10, pady=5)
 
 
 
