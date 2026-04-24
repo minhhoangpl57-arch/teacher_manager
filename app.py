@@ -1,5 +1,11 @@
 import customtkinter  # This tells Python what 'customtkinter' is
 import tkinter
+import sys as _sys
+for _stream in (_sys.stdout, _sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 from extractor import run_extraction # Linking to your other file
 import customtkinter as ctk
 import pandas as pd
@@ -135,9 +141,7 @@ def auto_update_schedule():
     files = glob.glob(search_pattern)
     
     if not files:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("Lỗi", f"Không tìm thấy file 'schedule' nào trong thư mục:\n{base_path}")
+        print(f"[auto_update_schedule] Không tìm thấy file 'schedule' nào trong: {base_path}")
         return
 
     file_path = files[0]
@@ -156,9 +160,7 @@ def auto_update_schedule():
         date_column = next((c for c in df.columns if c.startswith(date_str)), None)
 
         if not date_column:
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showwarning("Thông báo", f"Hôm nay ({vn_date}) không có lịch dạy trong file nguồn.")
+            print(f"[auto_update_schedule] Hôm nay ({vn_date}) không có lịch dạy trong file nguồn.")
             return
 
         # 4. Xử lý gộp ô và lọc dữ liệu
@@ -225,15 +227,10 @@ def auto_update_schedule():
         # 6. Lưu file cùng thư mục với EXE
         output_path = os.path.join(base_path, f"KeHoach_Ngay_{date_str}.xlsx")
         wb.save(output_path)
-        
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showinfo("Thành công", f"Đã cập nhật lịch ngày {vn_date}!\nFile lưu tại: {output_path}")
+        print(f"[auto_update_schedule] Đã cập nhật lịch ngày {vn_date}. File: {output_path}")
 
     except Exception as e:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("Lỗi hệ thống", str(e))
+        print(f"[auto_update_schedule] Lỗi hệ thống: {e}")
 
 if __name__ == "__main__":
     auto_update_schedule()
@@ -394,9 +391,14 @@ class TeacherManagerPro(ctk.CTk):
 
 
     def build_tree(self, folder_path):
+        def is_hidden(name):
+            return name.startswith(".") or name.startswith("~$") or name.lower() == "thumbs.db"
+
         tree = {}
 
         for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [d for d in dirs if not is_hidden(d)]
+
             rel_path = os.path.relpath(root, folder_path)
             parts = rel_path.split(os.sep) if rel_path != "." else []
 
@@ -405,6 +407,8 @@ class TeacherManagerPro(ctk.CTk):
                 current = current.setdefault(part, {})
 
             for file in files:
+                if is_hidden(file):
+                    continue
                 current[file] = None
 
         return tree
@@ -429,79 +433,75 @@ class TeacherManagerPro(ctk.CTk):
 
         self.render_tree(self.document_scroll, tree)
     def render_tree(self, parent, tree, base_path="", level=0):
-    
-        for name, content in tree.items():
+        for name, content in sorted(tree.items(), key=lambda x: (not isinstance(x[1], dict), x[0].lower())):
             full_path = os.path.join(base_path, name)
-
-            # 📁 FOLDER
             if isinstance(content, dict):
-                frame = ctk.CTkFrame(parent, fg_color="transparent")
-                frame.pack(fill="x", padx=10 + level * 20, pady=2)
-
-                # trạng thái mở/đóng
-                is_open = False
-
-                # children container
-                child_frame = ctk.CTkFrame(parent, fg_color="transparent")
-
-                def toggle():
-                    nonlocal is_open
-                    is_open = not is_open
-
-                    if is_open:
-                        child_frame.pack(fill="x")
-                        btn.configure(text="📂")
-                    else:
-                        child_frame.pack_forget()
-                        btn.configure(text="📁")
-
-                btn = ctk.CTkButton(
-                    frame,
-                    text="📁",
-                    width=30,
-                    command=toggle,
-                    fg_color="transparent"
-                )
-                btn.pack(side="left")
-
-                ctk.CTkLabel(
-                    frame,
-                    text=name,
-                    font=("Segoe UI", 13, "bold")
-                ).pack(side="left", padx=5)
-
-                # ⚠️ IMPORTANT: render children INSIDE child_frame
-                self.render_tree(child_frame, content, full_path, level + 1)
-
-            # 📄 FILE
+                self._render_folder_node(parent, name, content, full_path, level)
             else:
-                frame = ctk.CTkFrame(
-                    parent,
-                    height=40,
-                    corner_radius=8,
-                    fg_color=("gray95", "gray15")
-                )
-                frame.pack(fill="x", padx=30 + level * 20, pady=2)
-                frame.pack_propagate(False)
+                self._render_file_node(parent, name, full_path, level)
 
-                ctk.CTkLabel(
-                    frame,
-                    text=f"📄 {name}",
-                    font=("Segoe UI", 12)
-                ).pack(side="left", padx=10)
+    def _render_folder_node(self, parent, name, content, full_path, level):
+        container = ctk.CTkFrame(parent, fg_color="transparent")
+        container.pack(fill="x", padx=0, pady=0, anchor="w")
 
-                ctk.CTkButton(
-                    frame,
-                    text="Mở",
-                    width=60,
-                    height=28,
-                    command=lambda p=full_path: self.open_document(p)
-                ).pack(side="right", padx=10)
+        header = ctk.CTkFrame(container, fg_color=("#E2E8F0", "#1F2937"), corner_radius=6, height=36)
+        header.pack(fill="x", padx=(10 + level * 22, 10), pady=2)
+        header.pack_propagate(False)
 
-    def hide_all_frames(self):
-        self.mgmt_frame.pack_forget()
-        self.plan_frame.pack_forget()
-        self.document_frame.pack_forget()
+        child_frame = ctk.CTkFrame(container, fg_color="transparent")
+        state = {"open": False}
+
+        arrow = ctk.CTkLabel(header, text="▸", font=("Segoe UI", 12, "bold"), width=18, cursor="hand2")
+        arrow.pack(side="left", padx=(10, 0))
+        icon = ctk.CTkLabel(header, text="📁", font=("Segoe UI", 13), cursor="hand2")
+        icon.pack(side="left", padx=(2, 4))
+        label = ctk.CTkLabel(header, text=name, font=("Segoe UI", 13, "bold"), cursor="hand2", anchor="w")
+        label.pack(side="left", padx=2, fill="x", expand=True)
+
+        def toggle(event=None):
+            if state["open"]:
+                child_frame.pack_forget()
+                arrow.configure(text="▸")
+                icon.configure(text="📁")
+                state["open"] = False
+            else:
+                child_frame.pack(fill="x", anchor="w")
+                arrow.configure(text="▾")
+                icon.configure(text="📂")
+                state["open"] = True
+
+        for w in (header, arrow, icon, label):
+            w.bind("<Button-1>", toggle)
+
+        self.render_tree(child_frame, content, full_path, level + 1)
+
+    def _render_file_node(self, parent, name, full_path, level):
+        normal_color = ("#F8FAFC", "#111827")
+        hover_color = ("#DBEAFE", "#1E3A8A")
+
+        row = ctk.CTkFrame(parent, height=34, corner_radius=6, fg_color=normal_color)
+        row.pack(fill="x", padx=(30 + level * 22, 10), pady=2)
+        row.pack_propagate(False)
+
+        icon = ctk.CTkLabel(row, text="📄", font=("Segoe UI", 13), cursor="hand2")
+        icon.pack(side="left", padx=(10, 4))
+        label = ctk.CTkLabel(row, text=name, font=("Segoe UI", 12), cursor="hand2", anchor="w")
+        label.pack(side="left", padx=0, fill="x", expand=True)
+
+        def on_click(event=None):
+            self.open_document(full_path)
+
+        def on_enter(event=None):
+            row.configure(fg_color=hover_color)
+
+        def on_leave(event=None):
+            row.configure(fg_color=normal_color)
+
+        for w in (row, icon, label):
+            w.bind("<Button-1>", on_click)
+            w.bind("<Enter>", on_enter)
+            w.bind("<Leave>", on_leave)
+
     def create_teacher_card(self, row):
         """Hàm phụ tạo từng dòng giảng viên"""
         card = ctk.CTkFrame(self.mgmt_scroll, fg_color="white", height=55, corner_radius=10, 
@@ -525,19 +525,10 @@ class TeacherManagerPro(ctk.CTk):
                             command=lambda r=row.to_dict(): TeacherDetailWindow(self, r))
         btn.pack(side="right", padx=15)
    
-    def show_plan_frame(self):
-        self.hide_all_frames()
-        """Hiển thị tab Kế hoạch giảng và ẩn tab Quản lý"""
-        self.plan_frame.pack(fill="both", expand=True)
-        # Đổi màu nút
-        self.btn_plan.configure(fg_color=COLORS["hover"], text_color=COLORS["purple"])
-        self.btn_mgmt.configure(fg_color="transparent", text_color="white")
-        self.btn_document.configure(fg_color="transparent", text_color="white")
-    
-   
     def show_document_frame(self):
         self.hide_all_frames()
         self.document_frame.pack(fill="both", expand=True)
+        self.set_active_nav(self.btn_document)
         self.render_documents()
   
     def start_live_sync(self):
@@ -653,10 +644,20 @@ class TeacherManagerPro(ctk.CTk):
         self.lbl_time.pack(side="bottom", pady=30)
 
     def create_nav_btn(self, text, cmd):
-        btn = ctk.CTkButton(self.sidebar, text=text, font=("Arial", 14, "bold"), height=52, 
-                            fg_color="blue", anchor="w", hover_color=COLORS["hover"], command=cmd)
+        btn = ctk.CTkButton(self.sidebar, text=text, font=("Arial", 14, "bold"), height=52,
+                            fg_color="transparent", text_color=COLORS["text"],
+                            anchor="w", hover_color=COLORS["hover"], command=cmd)
         btn.pack(pady=5, padx=20, fill="x")
         return btn
+
+    def set_active_nav(self, active_btn):
+        for b in (self.btn_mgmt, self.btn_plan, self.btn_document):
+            if b is active_btn:
+                b.configure(fg_color=COLORS["accent"], text_color="white",
+                            hover_color="#1D4ED8")
+            else:
+                b.configure(fg_color="transparent", text_color=COLORS["text"],
+                            hover_color=COLORS["hover"])
     def load_excel_smart(self, path, check_cols):
         try:
             raw = pd.read_excel(path, header=None)
@@ -720,7 +721,8 @@ class TeacherManagerPro(ctk.CTk):
     def show_mgmt_frame(self):
         self.hide_all_frames()
         self.mgmt_frame.pack(fill="both", expand=True)
-        
+        self.set_active_nav(self.btn_mgmt)
+
     def setup_mgmt_ui(self):
         self.clear_right_frame()
         header = ctk.CTkFrame(self.mgmt_frame, fg_color="transparent")
@@ -864,7 +866,8 @@ class TeacherManagerPro(ctk.CTk):
     def show_plan_frame(self):
         self.hide_all_frames()
         self.plan_frame.pack(fill="both", expand=True)
-    
+        self.set_active_nav(self.btn_plan)
+
     def render_plan(self):
         try:
             if not self.plan_scroll.winfo_exists(): return
@@ -947,16 +950,6 @@ class TeacherManagerPro(ctk.CTk):
             self.update_idletasks()
         except Exception as e:
             print(f"❌ Lỗi: {e}")
-    def open_excel():
-        file_path = "schedule.xlsx"
-    
-        if os.path.exists(file_path):
-            try:
-                subprocess.run(["open", file_path])
-            except Exception as e:
-                print(f"Error opening file: {e}")
-        else:
-            print("File not found. Please check the path.")
     def setup_plan_ui(self):
         self.clear_right_frame()
         # Header
@@ -1020,7 +1013,7 @@ class TeacherManagerPro(ctk.CTk):
 
                 grouped.append(teacher)
 
-            self.plan_data = df.to_dict('record')
+            self.plan_data = df.to_dict('records')
             self.render_plan()
 
         except Exception as e:
